@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "PyVirtualAssistantLib"
+version = "0.0.1"
+authors = [
+  { name="AlanDoesCS", email="pyvirtualassistantlib@outlook.com" },
+]
+description = "An easy to use virtual assistant library for python"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/AlanDoesCS/PyVirtualAssistantLib"
+Issues = "https://github.com/AlanDoesCS/PyVirtualAssistantLibissues"
