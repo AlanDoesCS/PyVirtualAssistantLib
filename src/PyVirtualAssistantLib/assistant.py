@@ -50,7 +50,7 @@ class Model:
         self.__messages.append((role, text))
         msg: BaseMessage = self.__llm.invoke(self.__messages)
         content: str = msg.content
-        self.__messages.append(("ai", content))
+        self.__messages.append(("assistant", content))
 
         print("AI " + content)
 
@@ -58,3 +58,6 @@ class Model:
             print(self.__messages)
 
         return content
+
+    def bind_tool(self, tool_name: str, tool_function):
+        raise NotImplementedError("Binding tools is not yet implemented")
