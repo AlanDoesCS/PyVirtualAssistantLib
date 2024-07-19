@@ -2,14 +2,18 @@ import multiprocessing
 
 from langchain_community.chat_models import ChatLlamaCpp
 from langchain_core.messages import BaseMessage, AIMessage
+import src.PyVirtualAssistantLib.tools as assistant_tools
 
-accepted_roles = ["human", "system"]
+accepted_roles = ["human", "system", "assistant"]
+
 
 class Model:
     # Private variables
     __llm: ChatLlamaCpp
     __model_path: str
     __messages: list
+    __tools: list = []
+    __system_prompt: str
     __verbose: bool
 
     def __init__(
@@ -54,10 +58,20 @@ class Model:
 
         print("AI " + content)
 
+        if self.__tools:  # List not empty
+            print("Tool calls: ", msg.tool_calls)
+
         if self.__verbose:
             print(self.__messages)
 
         return content
 
-    def bind_tool(self, tool_name: str, tool_function):
-        raise NotImplementedError("Binding tools is not yet implemented")
+    def bind_tool(self, tool_class: assistant_tools.AssistantTool):
+        self.__tools.append(tool_class)
+        __llm = self.__llm.bind_tools(
+            tools=[tool_class.tool_function],
+            tool_choice={"type": "function", "function": {"name": tool_class.get_tool_name()}}
+        )
+
+        if self.__verbose:
+            print(tool_class.get_tool_name() + " bound to model")
