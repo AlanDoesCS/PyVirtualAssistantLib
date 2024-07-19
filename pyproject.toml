@@ -16,6 +16,10 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dependencies = [
+    "langchain-community",
+    "llama-cpp-python"
+]
 
 [project.urls]
 Homepage = "https://github.com/AlanDoesCS/PyVirtualAssistantLib"
