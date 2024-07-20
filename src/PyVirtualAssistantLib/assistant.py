@@ -8,21 +8,12 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.chat_models import ChatLlamaCpp
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
-
-from .tools import SourceSelectionTool, AssistantTool
+from duckduckgo_search import DDGS
 
 accepted_roles = ["human", "system", "assistant"]
 
-class Model:
-    # Private variables
-    __llm: ChatLlamaCpp
-    __model_path: str
-    __messages: list
-    __tools: list = []
-    __tool_functions: list = []
-    __system_prompt: str
-    __verbose: bool
 
+class Model:
     def __init__(
             self,
             model_path: str,
@@ -53,13 +44,14 @@ class Model:
 
         self.__verbose = verbose
         self.__messages = [("system", system_prompt)]
+        self.__ddg_search = DDGS()  # search engine for if no relevant docs are found
 
         # init embeddings
         self.embeddings = HuggingFaceEmbeddings()
         self.vector_store = Chroma(embedding_function=self.embeddings)
 
         # Initialize retriever
-        base_retriever = self.vector_store.as_retriever()
+        base_retriever = self.vector_store.as_retriever(search_kwargs={"k": 2})
         self.retriever = ContextualCompressionRetriever(
             base_compressor=LLMChainExtractor.from_llm(self.__llm),
             base_retriever=base_retriever
@@ -72,42 +64,27 @@ class Model:
         self.vector_store.add_documents(documents)
 
     def chat(self, text: str, role: str = "human") -> str:
-        if not (role in accepted_roles):
+        if role not in accepted_roles:
             raise ValueError(f"Role must be one of {accepted_roles}")
 
         self.__messages.append((role, text))
 
-        source_selection_tool = next((tool for tool in self.__tools if isinstance(tool, SourceSelectionTool)), None)
-        if source_selection_tool:
-            available_sources = list(set(
-                [doc.metadata.get('source', 'Unknown') for doc in self.vector_store.get() if isinstance(doc, Document)]
-            ))
-            source_selection_request = SourceSelectionTool.SourceSelectionRequest(query=text,
-                                                                                  available_sources=available_sources)
-            selected_sources = source_selection_tool.invoke(source_selection_request.dict())
+        all_docs = self.retriever.invoke(text)
 
-            relevant_docs = self.retriever.get_relevant_documents(text)
-            filtered_docs = [doc for doc in relevant_docs if doc.metadata.get('source', 'Unknown') in selected_sources]
+        relevant_docs = [doc for doc in all_docs if not ("NO_OUTPUT" in doc.page_content)]
+
+        if relevant_docs:
+            context = "\n".join([doc.page_content for doc in relevant_docs])
+            context_message = f"Relevant context:\n{context}"
         else:
-            filtered_docs = self.retriever.get_relevant_documents(text)
+            print("Searching the web for relevant information...")
+            web_search_results = self.__ddg_search.text(text, max_results=2)
+            context_message = f"No relevant information in provided documents.\n\n{web_search_results}"
 
-        context = "\n".join([doc.page_content for doc in filtered_docs])
-        self.__messages.append(("system", f"Relevant context:\n{context}"))
-
-        context = "\n".join([doc.page_content for doc in filtered_docs])
-        self.__messages.append(("system", f"Relevant context:\n{context}"))
+        self.__messages.append(("system", context_message))
 
         msg: BaseMessage = self.__llm.invoke(self.__messages)
         content: str = msg.content
-
-        # Use tools to enhance the response if applicable
-        for tool in self.__tools:
-            if tool.get_tool_name() in content:
-                try:
-                    tool_result = tool.tool_function(text)
-                    content += f"\n\nAdditional information from {tool.get_tool_name()}:\n{tool_result}"
-                except Exception as e:
-                    content += f"\n\nError using {tool.get_tool_name()}: {str(e)}"
 
         self.__messages.append(("assistant", content))
 
@@ -117,18 +94,3 @@ class Model:
             print(self.__messages)
 
         return content
-
-    def bind_tool(self, tool_class: AssistantTool):
-        self.__tools.append(tool_class)
-        self.__tool_functions.append(tool_class.tool_function)
-        self.__llm = self.__llm.bind_tools(
-            tools=self.__tool_functions,
-            tool_choice={"type": "function", "function": {"name": tool_class.get_tool_name()}}
-        )
-
-        if self.__verbose:
-            print(tool_class.get_tool_name() + " bound to model")
-
-    def bind_tools(self, tool_classes: list):
-        for tool_class in tool_classes:
-            self.bind_tool(tool_class)

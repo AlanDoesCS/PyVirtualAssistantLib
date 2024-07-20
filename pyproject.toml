@@ -21,7 +21,8 @@ dependencies = [
     "llama-cpp-python",
     "sentence-transformers",
     "chromadb",
-    "langchain_huggingface"
+    "langchain_huggingface",
+    "duckduckgo_search"
 ]
 
 [project.urls]
