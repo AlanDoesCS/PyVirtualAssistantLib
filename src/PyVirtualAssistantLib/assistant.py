@@ -85,7 +85,6 @@ class Model:
             print("Searching the web for relevant information...")
             web_search_results = self.__ddg_search.text(text, max_results=1)
             context_message = web_search_results[0].get('body')
-            print(f"CONTEXT MESSAGE: '{context_message}'")
 
         self.__messages.append(("system", context_message))
 
@@ -97,6 +96,7 @@ class Model:
         print("AI: " + content)
 
         if self.verbose:
-            print(self.__messages)
+            print(f"CONTEXT MESSAGE: '{context_message}'")
+            print(f"MESSAGES: {self.__messages}")
 
         return content
