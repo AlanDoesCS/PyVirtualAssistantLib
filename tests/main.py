@@ -12,4 +12,6 @@ while True:
     if user_input.lower() == 'exit':
         break
 
-    assistant.chat(user_input)
+    for chunk in assistant.chat(user_input):
+        print(chunk, end='', flush=True)
+    print()

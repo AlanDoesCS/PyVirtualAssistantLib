@@ -1,5 +1,5 @@
 import multiprocessing
-from typing import List
+from typing import List, Iterator
 
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.retrievers import ContextualCompressionRetriever
@@ -75,7 +75,8 @@ class Model:
 
     def add_web_documents(self, query: str, num_results: int = 3):
         search_results = self.__ddg_search.text(query, max_results=num_results)
-        print("SEARCH RESULTS: ", search_results)
+        if self.verbose:
+            print("SEARCH RESULTS: ", search_results)
         self.add_documents([
             Document(
                 page_content=f"Title: {result['title']}\n\nBody: {result['body']}",
@@ -83,36 +84,43 @@ class Model:
             ) for result in search_results
         ])
 
-    def chat(self, text: str, role: str = "human") -> str:
+    def chat(self, text: str, role: str = "human") -> Iterator[str]:
         if role not in accepted_roles:
             raise ValueError(f"Role must be one of {accepted_roles}")
 
         self.__messages.append((role, text))
 
+        # Retrieve relevant documents
         all_docs = self.retriever.invoke(text)
 
-        print("ALLDOCS1: ", all_docs)
-        relevant_docs = [doc for doc in all_docs if not ("NO_OUTPUT" in doc.page_content)]
+        if not all_docs:
+            if self.verbose:
+                print("No relevant documents found. Searching the web...")
+            self.add_web_documents(text, num_results=1)
+            all_docs = self.retriever.get_relevant_documents(text)
 
-        if not relevant_docs:
-            print("Searching the web for relevant information...")
-            self.add_web_documents(text, num_results=2)
-            all_docs = self.retriever.invoke(text)
-            print("ALLDOCS2: ", all_docs)
-            relevant_docs = [doc for doc in all_docs if not ("NO_OUTPUT" in doc.page_content)]
-
-        if relevant_docs:
-            context = "\n".join([doc.page_content for doc in relevant_docs])
+        if all_docs:
+            context = "\n".join([doc.page_content for doc in all_docs])
             self.__messages.append(("system", f"Relevant context:\n{context}"))
 
-        msg: BaseMessage = self.__llm.invoke(self.__messages)
-        content: str = msg.content
+        # Add conversation history to messages
+        chat_history = self.__memory.load_memory_variables({})["chat_history"]
+        messages_with_history = self.__messages + list(chat_history)
 
-        self.__messages.append(("assistant", content))
+        # Generate response
+        stream = self.__llm.stream(messages_with_history)
 
-        print("AI: " + content)
+        full_response = ""
+        for chunk in stream:
+            content = chunk.content
+            full_response += content
+            yield content
+
+        # Save the conversation to memory
+        self.__memory.save_context({"input": text}, {"output": full_response})
+
+        self.__messages.append(("assistant", full_response))
 
         if self.verbose:
             print(f"MESSAGES: {self.__messages}")
-
-        return content
+            print(f"MEMORY: {self.__memory.load_memory_variables({})}")
