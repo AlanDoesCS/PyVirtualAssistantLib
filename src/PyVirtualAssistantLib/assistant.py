@@ -6,9 +6,10 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import LLMChainExtractor
 from langchain_community.vectorstores import Chroma
 from langchain_community.chat_models import ChatLlamaCpp
-# from langchain.memory import ConversationBufferMemory
+from langchain.memory import ConversationSummaryMemory
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
+
 from duckduckgo_search import DDGS
 
 from .screen_interaction import ScreenInteractor
@@ -43,7 +44,7 @@ class Model:
             n_threads=n_threads,
             repeat_penalty=repeat_penalty,
             top_p=top_p,
-            verbose=verbose
+            verbose=False#verbose
         )
 
         self.verbose = verbose
@@ -62,11 +63,25 @@ class Model:
             base_retriever=base_retriever
         )
 
+        self.__memory = ConversationSummaryMemory(
+            llm=self.__llm, memory_key="chat_history", return_messages=True
+        )
+
     def add_documents(self, documents: List[Document]):
         for doc in documents:
             if 'source' not in doc.metadata:
                 doc.metadata['source'] = 'Unknown'
         self.vector_store.add_documents(documents)
+
+    def add_web_documents(self, query: str, num_results: int = 3):
+        search_results = self.__ddg_search.text(query, max_results=num_results)
+        print("SEARCH RESULTS: ", search_results)
+        self.add_documents([
+            Document(
+                page_content=f"Title: {result['title']}\n\nBody: {result['body']}",
+                metadata={"source": result['href']}
+            ) for result in search_results
+        ])
 
     def chat(self, text: str, role: str = "human") -> str:
         if role not in accepted_roles:
@@ -76,17 +91,19 @@ class Model:
 
         all_docs = self.retriever.invoke(text)
 
+        print("ALLDOCS1: ", all_docs)
         relevant_docs = [doc for doc in all_docs if not ("NO_OUTPUT" in doc.page_content)]
+
+        if not relevant_docs:
+            print("Searching the web for relevant information...")
+            self.add_web_documents(text, num_results=2)
+            all_docs = self.retriever.invoke(text)
+            print("ALLDOCS2: ", all_docs)
+            relevant_docs = [doc for doc in all_docs if not ("NO_OUTPUT" in doc.page_content)]
 
         if relevant_docs:
             context = "\n".join([doc.page_content for doc in relevant_docs])
-            context_message = f"Relevant context:\n{context}"
-        else:
-            print("Searching the web for relevant information...")
-            web_search_results = self.__ddg_search.text(text, max_results=1)
-            context_message = web_search_results[0].get('body')
-
-        self.__messages.append(("system", context_message))
+            self.__messages.append(("system", f"Relevant context:\n{context}"))
 
         msg: BaseMessage = self.__llm.invoke(self.__messages)
         content: str = msg.content
@@ -96,7 +113,6 @@ class Model:
         print("AI: " + content)
 
         if self.verbose:
-            print(f"CONTEXT MESSAGE: '{context_message}'")
             print(f"MESSAGES: {self.__messages}")
 
         return content
