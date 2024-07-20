@@ -6,9 +6,12 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import LLMChainExtractor
 from langchain_community.vectorstores import Chroma
 from langchain_community.chat_models import ChatLlamaCpp
+# from langchain.memory import ConversationBufferMemory
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
 from duckduckgo_search import DDGS
+
+from .screen_interaction import ScreenInteractor
 
 accepted_roles = ["human", "system", "assistant"]
 
@@ -17,6 +20,7 @@ class Model:
     def __init__(
             self,
             model_path: str,
+            language: str = "en",
             system_prompt: str = "You are a helpful assistant. Answer any questions to the best of your ability.",
             temperature: float = 0.5,
             n_ctx: int = 10000,
@@ -42,9 +46,10 @@ class Model:
             verbose=verbose
         )
 
-        self.__verbose = verbose
+        self.verbose = verbose
         self.__messages = [("system", system_prompt)]
         self.__ddg_search = DDGS()  # search engine for if no relevant docs are found
+        self.__screen_interactor = ScreenInteractor(language)
 
         # init embeddings
         self.embeddings = HuggingFaceEmbeddings()
@@ -78,8 +83,9 @@ class Model:
             context_message = f"Relevant context:\n{context}"
         else:
             print("Searching the web for relevant information...")
-            web_search_results = self.__ddg_search.text(text, max_results=2)
-            context_message = f"No relevant information in provided documents.\n\n{web_search_results}"
+            web_search_results = self.__ddg_search.text(text, max_results=1)
+            context_message = web_search_results[0].get('body')
+            print(f"CONTEXT MESSAGE: '{context_message}'")
 
         self.__messages.append(("system", context_message))
 
@@ -90,7 +96,7 @@ class Model:
 
         print("AI: " + content)
 
-        if self.__verbose:
+        if self.verbose:
             print(self.__messages)
 
         return content

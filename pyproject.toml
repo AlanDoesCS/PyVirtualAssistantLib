@@ -22,7 +22,10 @@ dependencies = [
     "sentence-transformers",
     "chromadb",
     "langchain_huggingface",
-    "duckduckgo_search"
+    "duckduckgo_search",
+    "easyocr",
+    "pyautogui",
+    "opencv-python"
 ]
 
 [project.urls]
