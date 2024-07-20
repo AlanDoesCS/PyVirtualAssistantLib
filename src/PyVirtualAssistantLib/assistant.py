@@ -66,6 +66,9 @@ class Model:
         )
 
     def add_documents(self, documents: List[Document]):
+        for doc in documents:
+            if 'source' not in doc.metadata:
+                doc.metadata['source'] = 'Unknown'
         self.vector_store.add_documents(documents)
 
     def chat(self, text: str, role: str = "human") -> str:
@@ -76,13 +79,20 @@ class Model:
 
         source_selection_tool = next((tool for tool in self.__tools if isinstance(tool, SourceSelectionTool)), None)
         if source_selection_tool:
-            available_sources = [doc.metadata['source'] for doc in self.vector_store.get()]
-            selected_sources = source_selection_tool.tool_function(text, available_sources)
+            available_sources = list(set(
+                [doc.metadata.get('source', 'Unknown') for doc in self.vector_store.get() if isinstance(doc, Document)]
+            ))
+            source_selection_request = SourceSelectionTool.SourceSelectionRequest(query=text,
+                                                                                  available_sources=available_sources)
+            selected_sources = source_selection_tool.invoke(source_selection_request.dict())
 
             relevant_docs = self.retriever.get_relevant_documents(text)
-            filtered_docs = [doc for doc in relevant_docs if doc.metadata['source'] in selected_sources]
+            filtered_docs = [doc for doc in relevant_docs if doc.metadata.get('source', 'Unknown') in selected_sources]
         else:
             filtered_docs = self.retriever.get_relevant_documents(text)
+
+        context = "\n".join([doc.page_content for doc in filtered_docs])
+        self.__messages.append(("system", f"Relevant context:\n{context}"))
 
         context = "\n".join([doc.page_content for doc in filtered_docs])
         self.__messages.append(("system", f"Relevant context:\n{context}"))
@@ -110,8 +120,9 @@ class Model:
 
     def bind_tool(self, tool_class: AssistantTool):
         self.__tools.append(tool_class)
+        self.__tool_functions.append(tool_class.tool_function)
         self.__llm = self.__llm.bind_tools(
-            tools=[tool_class.tool_function],
+            tools=self.__tool_functions,
             tool_choice={"type": "function", "function": {"name": tool_class.get_tool_name()}}
         )
 

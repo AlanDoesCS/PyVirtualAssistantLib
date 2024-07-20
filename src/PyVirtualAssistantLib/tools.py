@@ -109,19 +109,23 @@ class SourceSelectionTool(AssistantTool):
         return "select_sources"
 
     @tool("select_sources", args_schema=SourceSelectionRequest)
-    def select_sources(query: str, available_sources: List[str]) -> List[str]:
+    def select_sources(request: SourceSelectionRequest) -> List[str]:
         """
         Selects the relevant sources for a given query.
 
         Args:
-            query (str): The user's query.
-            available_sources (List[str]): List of available sources.
+            request (SourceSelectionRequest): The request containing the query and available sources.
 
         Returns:
             List[str]: List of selected sources.
         """
         # TODO implement source selection logic
-        return available_sources
+        return request.available_sources
 
     def __init__(self):
         super(SourceSelectionTool, self).__init__(self.get_tool_name(), self.SourceSelectionRequest, self.select_sources)
+
+    def invoke(self, args: dict) -> List[str]:
+        request = self.SourceSelectionRequest(**args)
+
+        return self.select_sources(request)
