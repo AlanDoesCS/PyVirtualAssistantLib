@@ -3,12 +3,11 @@ from typing import List, Iterator
 
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import LLMChainExtractor
 from langchain_community.vectorstores import Chroma
 from langchain_community.chat_models import ChatLlamaCpp
 from langchain.memory import ConversationSummaryMemory
+from langchain.retrievers.document_compressors import EmbeddingsFilter
 from langchain_core.documents import Document
-from langchain_core.messages import BaseMessage
 
 from duckduckgo_search import DDGS
 
@@ -57,15 +56,14 @@ class Model:
         self.vector_store = Chroma(embedding_function=self.embeddings)
 
         # Initialize retriever
-        base_retriever = self.vector_store.as_retriever(search_kwargs={"k": 2})
+        base_retriever = self.vector_store.as_retriever(search_kwargs={"k": 5})
+        embeddings_filter = EmbeddingsFilter(embeddings=self.embeddings, similarity_threshold=0.7)
         self.retriever = ContextualCompressionRetriever(
-            base_compressor=LLMChainExtractor.from_llm(self.__llm),
+            base_compressor=embeddings_filter,
             base_retriever=base_retriever
         )
 
-        self.__memory = ConversationSummaryMemory(
-            llm=self.__llm, memory_key="chat_history", return_messages=True
-        )
+        self.__memory = ConversationSummaryMemory(llm=self.__llm, memory_key="chat_history", return_messages=True)
 
     def add_documents(self, documents: List[Document]):
         for doc in documents:
@@ -88,8 +86,6 @@ class Model:
         if role not in accepted_roles:
             raise ValueError(f"Role must be one of {accepted_roles}")
 
-        self.__messages.append((role, text))
-
         # Retrieve relevant documents
         all_docs = self.retriever.invoke(text)
 
@@ -97,18 +93,27 @@ class Model:
             if self.verbose:
                 print("No relevant documents found. Searching the web...")
             self.add_web_documents(text, num_results=1)
-            all_docs = self.retriever.get_relevant_documents(text)
+            all_docs = self.retriever.invoke(text)
 
+        # Prepare context
         if all_docs:
             context = "\n".join([doc.page_content for doc in all_docs])
-            self.__messages.append(("system", f"Relevant context:\n{context}"))
+        else:
+            context = "No relevant information found."
 
         # Add conversation history to messages
         chat_history = self.__memory.load_memory_variables({})["chat_history"]
-        messages_with_history = self.__messages + list(chat_history)
+
+        # Prepare messages for the LLM
+        messages = [
+            ("system", self.__messages[0][1]),  # System prompt
+            ("system", f"Relevant context:\n{context}"),
+            *chat_history,
+            (role, text)
+        ]
 
         # Generate response
-        stream = self.__llm.stream(messages_with_history)
+        stream = self.__llm.stream(messages)
 
         full_response = ""
         for chunk in stream:
@@ -119,8 +124,6 @@ class Model:
         # Save the conversation to memory
         self.__memory.save_context({"input": text}, {"output": full_response})
 
-        self.__messages.append(("assistant", full_response))
-
         if self.verbose:
-            print(f"MESSAGES: {self.__messages}")
+            print(f"MESSAGES: {messages}")
             print(f"MEMORY: {self.__memory.load_memory_variables({})}")
