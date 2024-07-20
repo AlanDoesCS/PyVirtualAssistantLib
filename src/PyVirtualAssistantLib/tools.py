@@ -1,3 +1,5 @@
+from typing import List
+
 from langchain.tools import tool
 from langchain_core.pydantic_v1 import BaseModel, Field
 
@@ -44,3 +46,82 @@ class WeatherTool(AssistantTool):
 
     def __init__(self):
         super(WeatherTool, self).__init__(self.get_tool_name(), self.WeatherRequest, self.get_current_weather)
+
+class WebScraperTool(AssistantTool):
+    class WebsiteRequest(BaseModel):
+        url: str = Field(..., title="URL", description="The specific webpage to scrape data from")
+
+    @classmethod
+    def get_tool_name(cls) -> str:
+        return "get_website_data"
+
+    @tool("get_website_data", args_schema=WebsiteRequest)
+    def get_website_content(url: str) -> str:
+        """
+        Read the data from a webpage
+
+        Args:
+            URL (str): The webpage to scrape.
+
+        Returns:
+            str: The contents of that page
+        """
+        data = "Wikipedia page"
+        return f"{url}:\n\n{data}"      # TODO: implement some form of scraping
+
+    def __init__(self):
+        super(WebScraperTool, self).__init__(self.get_tool_name(), self.WebsiteRequest, self.get_website_content)
+
+
+class WebSearchTool(AssistantTool):
+    class SearchEngineRequest(BaseModel):
+        search_prompt: str = Field(..., title="SearchPrompt", description="The search prompt for the search engine")
+
+    @classmethod
+    def get_tool_name(cls) -> str:
+        return "get_search_result"
+
+    @tool("get_search_result", args_schema=SearchEngineRequest)
+    def get_search_result(prompt: str) -> str:
+        """
+        Read the data from a webpage
+
+        Args:
+            prompt (str): The search prompt for the search engine.
+
+        Returns:
+            str: The contents of the best fitting search result
+        """
+        data = "Wikipedia page\nLorem ipsum dolor sit amet, consectetur adipiscing elit"
+        return data      # TODO: implement some form of scraping
+
+    def __init__(self):
+        super(WebSearchTool, self).__init__(self.get_tool_name(), self.SearchEngineRequest, self.get_search_result)
+
+
+class SourceSelectionTool(AssistantTool):
+    class SourceSelectionRequest(BaseModel):
+        query: str = Field(..., title="Query", description="The user's query")
+        available_sources: List[str] = Field(..., title="Available Sources", description="List of available sources")
+
+    @classmethod
+    def get_tool_name(cls) -> str:
+        return "select_sources"
+
+    @tool("select_sources", args_schema=SourceSelectionRequest)
+    def select_sources(query: str, available_sources: List[str]) -> List[str]:
+        """
+        Selects the relevant sources for a given query.
+
+        Args:
+            query (str): The user's query.
+            available_sources (List[str]): List of available sources.
+
+        Returns:
+            List[str]: List of selected sources.
+        """
+        # TODO implement source selection logic
+        return available_sources
+
+    def __init__(self):
+        super(SourceSelectionTool, self).__init__(self.get_tool_name(), self.SourceSelectionRequest, self.select_sources)

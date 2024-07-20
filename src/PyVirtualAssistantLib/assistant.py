@@ -1,11 +1,17 @@
 import multiprocessing
+from typing import List
 
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import LLMChainExtractor
+from langchain_community.vectorstores import Chroma
 from langchain_community.chat_models import ChatLlamaCpp
-from langchain_core.messages import BaseMessage, AIMessage
-import src.PyVirtualAssistantLib.tools as assistant_tools
+from langchain_core.documents import Document
+from langchain_core.messages import BaseMessage
+
+from .tools import SourceSelectionTool, AssistantTool
 
 accepted_roles = ["human", "system", "assistant"]
-
 
 class Model:
     # Private variables
@@ -13,6 +19,7 @@ class Model:
     __model_path: str
     __messages: list
     __tools: list = []
+    __tool_functions: list = []
     __system_prompt: str
     __verbose: bool
 
@@ -47,31 +54,70 @@ class Model:
         self.__verbose = verbose
         self.__messages = [("system", system_prompt)]
 
+        # init embeddings
+        self.embeddings = HuggingFaceEmbeddings()
+        self.vector_store = Chroma(embedding_function=self.embeddings)
+
+        # Initialize retriever
+        base_retriever = self.vector_store.as_retriever()
+        self.retriever = ContextualCompressionRetriever(
+            base_compressor=LLMChainExtractor.from_llm(self.__llm),
+            base_retriever=base_retriever
+        )
+
+    def add_documents(self, documents: List[Document]):
+        self.vector_store.add_documents(documents)
+
     def chat(self, text: str, role: str = "human") -> str:
         if not (role in accepted_roles):
             raise ValueError(f"Role must be one of {accepted_roles}")
 
         self.__messages.append((role, text))
+
+        source_selection_tool = next((tool for tool in self.__tools if isinstance(tool, SourceSelectionTool)), None)
+        if source_selection_tool:
+            available_sources = [doc.metadata['source'] for doc in self.vector_store.get()]
+            selected_sources = source_selection_tool.tool_function(text, available_sources)
+
+            relevant_docs = self.retriever.get_relevant_documents(text)
+            filtered_docs = [doc for doc in relevant_docs if doc.metadata['source'] in selected_sources]
+        else:
+            filtered_docs = self.retriever.get_relevant_documents(text)
+
+        context = "\n".join([doc.page_content for doc in filtered_docs])
+        self.__messages.append(("system", f"Relevant context:\n{context}"))
+
         msg: BaseMessage = self.__llm.invoke(self.__messages)
         content: str = msg.content
+
+        # Use tools to enhance the response if applicable
+        for tool in self.__tools:
+            if tool.get_tool_name() in content:
+                try:
+                    tool_result = tool.tool_function(text)
+                    content += f"\n\nAdditional information from {tool.get_tool_name()}:\n{tool_result}"
+                except Exception as e:
+                    content += f"\n\nError using {tool.get_tool_name()}: {str(e)}"
+
         self.__messages.append(("assistant", content))
 
-        print("AI " + content)
-
-        if self.__tools:  # List not empty
-            print("Tool calls: ", msg.tool_calls)
+        print("AI: " + content)
 
         if self.__verbose:
             print(self.__messages)
 
         return content
 
-    def bind_tool(self, tool_class: assistant_tools.AssistantTool):
+    def bind_tool(self, tool_class: AssistantTool):
         self.__tools.append(tool_class)
-        __llm = self.__llm.bind_tools(
+        self.__llm = self.__llm.bind_tools(
             tools=[tool_class.tool_function],
             tool_choice={"type": "function", "function": {"name": tool_class.get_tool_name()}}
         )
 
         if self.__verbose:
             print(tool_class.get_tool_name() + " bound to model")
+
+    def bind_tools(self, tool_classes: list):
+        for tool_class in tool_classes:
+            self.bind_tool(tool_class)

@@ -1,8 +1,8 @@
-import src.PyVirtualAssistantLib.assistant as assistant
-import src.PyVirtualAssistantLib.tools as tools
+from src.PyVirtualAssistantLib import create_assistant
 
-model = assistant.Model("C:/Users/Alan/PycharmProjects/PyVirtualAssistantLib/models/lmstudio-community/Meta-Llama-3-8B-Instruct-GGUF/Meta-Llama-3-8B-Instruct-Q4_K_M.gguf")
-model.bind_tool(tools.WeatherTool())
+path = "C:/Users/Alan/PycharmProjects/PyVirtualAssistantLib/models/lmstudio-community/Meta-Llama-3-8B-Instruct-GGUF/Meta-Llama-3-8B-Instruct-Q4_K_M.gguf"
+
+assistant = create_assistant(path)
 
 while True:
-    model.chat(input("Enter something: "))
+    assistant.chat(input("Enter something: "))

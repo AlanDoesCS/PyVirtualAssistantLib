@@ -18,7 +18,10 @@ classifiers = [
 ]
 dependencies = [
     "langchain-community",
-    "llama-cpp-python"
+    "llama-cpp-python",
+    "sentence-transformers",
+    "chromadb",
+    "langchain_huggingface"
 ]
 
 [project.urls]
