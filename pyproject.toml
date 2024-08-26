@@ -21,7 +21,7 @@ dependencies = [
     "llama-cpp-python",
     "sentence-transformers",
     "chromadb",
-    "langchain_huggingface",
+    "langchain-huggingface",
     "duckduckgo_search",
     "easyocr",
     "pyautogui",
@@ -30,4 +30,4 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/AlanDoesCS/PyVirtualAssistantLib"
-Issues = "https://github.com/AlanDoesCS/PyVirtualAssistantLibissues"
+Issues = "https://github.com/AlanDoesCS/PyVirtualAssistantLib/issues"
