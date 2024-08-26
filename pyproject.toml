@@ -22,7 +22,7 @@ dependencies = [
     "sentence-transformers",
     "chromadb",
     "langchain-huggingface",
-    "duckduckgo_search",
+    "duckduckgo-search",
     "easyocr",
     "pyautogui",
     "opencv-python"
